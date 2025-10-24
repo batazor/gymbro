@@ -1,0 +1,6 @@
+{
+  "watchman": {
+    "watch": ".",
+    "ignore_dirs": ["node_modules", ".git", "docs", "test-*.js", "demo-*.js"]
+  }
+}
