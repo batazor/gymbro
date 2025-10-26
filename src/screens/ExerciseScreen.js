@@ -10,12 +10,14 @@ import {
   Text,
   Chip,
   ProgressBar,
-  Divider
+  Divider,
+  Snackbar
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import GoogleSheetsService from '../services/GoogleSheetsService';
 
 export default function ExerciseScreen({ route, navigation }) {
-  const { exercise, exerciseIndex, totalExercises, workout } = route.params;
+  const { exercise, exerciseIndex, totalExercises, workout, sheetUrl } = route.params;
   const [sets, setSets] = useState(
     Array(exercise.sets || 4).fill(null).map((_, index) => ({
       setNumber: index + 1,
@@ -26,10 +28,17 @@ export default function ExerciseScreen({ route, navigation }) {
   );
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarType, setSnackbarType] = useState('success'); // 'success', 'error', 'info'
 
   const handleWeightChange = (weight) => {
+    // Валидация: только цифры и точка/запятая для десятичных
+    const cleanWeight = weight.replace(/[^0-9.,]/g, '').replace(/,/g, '.');
+    
     const newSets = [...sets];
-    newSets[currentSetIndex].weight = weight;
+    newSets[currentSetIndex].weight = cleanWeight;
     setSets(newSets);
   };
 
@@ -80,7 +89,135 @@ export default function ExerciseScreen({ route, navigation }) {
     return sets.length > 0 ? getCompletedSetsCount() / sets.length : 0;
   };
 
-  const goToNextExercise = () => {
+  const showSnackbar = (message, type = 'success') => {
+    setSnackbarMessage(message);
+    setSnackbarType(type);
+    setSnackbarVisible(true);
+  };
+
+  const saveExerciseResults = async () => {
+    if (!sheetUrl) {
+      showSnackbar('URL таблицы не найден', 'error');
+      return;
+    }
+
+    setSaving(true);
+    showSnackbar('Сохранение результатов...', 'info');
+    
+    try {
+      const progressData = {
+        exercise,
+        workout,
+        sets,
+        notes,
+        exerciseIndex
+      };
+
+      const result = await GoogleSheetsService.writeProgress(sheetUrl, progressData);
+      
+      if (result.success) {
+        if (result.apiResponse) {
+          // Успешное обновление через API
+          showSnackbar(`✅ Успешно обновлено ${result.positions.length} ячеек в таблице!`, 'success');
+        } else if (result.manualUpdate) {
+          // Нужно обновить вручную
+          showSnackbar(
+            `✅ Найдено ${result.positions.length} ячеек для обновления!`, 
+            'info'
+          );
+          
+          // Показываем детальное сообщение с адресами ячеек
+          const cellInstructions = result.positions.map(pos => 
+            `${pos.cellAddress}: ${pos.exercise} (подход ${pos.set}) = ${pos.value} кг`
+          ).join('\n');
+
+          Alert.alert(
+            'Обновите ячейки в таблице',
+            `Найдите и обновите следующие ячейки в вашей таблице:\n\n${cellInstructions}`,
+            [
+              { text: 'Понятно', style: 'default' },
+              { text: 'Открыть таблицу', onPress: () => Linking.openURL(result.sheetUrl) }
+            ]
+          );
+        } else {
+          showSnackbar(`✅ Успешно сохранено!`, 'success');
+        }
+      } else if (result.error === 'access_denied') {
+        showSnackbar('❌ Авторизация отменена', 'error');
+        
+        Alert.alert(
+          'Авторизация отменена',
+          'Вы отменили авторизацию в Google. Для сохранения данных необходимо предоставить разрешения. Попробуйте снова?',
+          [
+            { text: 'Нет', style: 'cancel' },
+            { 
+              text: 'Попробовать снова', 
+              onPress: () => saveExerciseResults()
+            }
+          ]
+        );
+      } else if (result.needsVerification) {
+        showSnackbar('⚠️ Требуется верификация приложения', 'error');
+        
+        Alert.alert(
+          'Верификация приложения',
+          'Приложение не прошло верификацию Google. Добавьте свой аккаунт в тестовые пользователи в Google Cloud Console.',
+          [
+            { text: 'Понятно', style: 'default' }
+          ]
+        );
+      } else if (result.error === 'popup_blocked') {
+        showSnackbar('❌ Блокировщик всплывающих окон', 'error');
+        
+        Alert.alert(
+          'Блокировщик всплывающих окон',
+          'Отключите блокировщик всплывающих окон для этого сайта и попробуйте снова.',
+          [
+            { text: 'Понятно', style: 'default' }
+          ]
+        );
+      } else if (result.error === 'timeout') {
+        showSnackbar('⏰ Таймаут авторизации', 'error');
+        
+        Alert.alert(
+          'Таймаут авторизации',
+          'Авторизация заняла слишком много времени. Попробуйте снова.',
+          [
+            { text: 'Понятно', style: 'default' }
+          ]
+        );
+      } else if (result.error === 'redirect_required') {
+        showSnackbar('🔄 Перенаправление на авторизацию', 'info');
+        
+        Alert.alert(
+          'Авторизация Google',
+          'Вы будете перенаправлены на страницу авторизации Google. После авторизации вернитесь в приложение.',
+          [
+            { text: 'Отмена', style: 'cancel' },
+            { 
+              text: 'Продолжить', 
+              onPress: () => {
+                if (result.authUrl) {
+                  window.location.href = result.authUrl;
+                }
+              }
+            }
+          ]
+        );
+      } else {
+        showSnackbar(`❌ Ошибка: ${result.message}`, 'error');
+      }
+    } catch (error) {
+      showSnackbar(`❌ Ошибка сохранения: ${error.message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const goToNextExercise = async () => {
+    // Сначала сохраняем результаты текущего упражнения
+    await saveExerciseResults();
+    
     if (exerciseIndex < totalExercises - 1) {
       // Переходим к следующему упражнению
       const nextExercise = workout.exercises[exerciseIndex + 1];
@@ -88,13 +225,14 @@ export default function ExerciseScreen({ route, navigation }) {
         exercise: nextExercise,
         exerciseIndex: exerciseIndex + 1,
         totalExercises,
-        workout
+        workout,
+        sheetUrl
       });
     } else {
       // Завершили все упражнения
       Alert.alert(
         'Тренировка завершена! 🎉',
-        'Отличная работа! Все упражнения выполнены.',
+        'Отличная работа! Все упражнения выполнены и сохранены.',
         [
           {
             text: 'Вернуться к плану',
@@ -107,7 +245,7 @@ export default function ExerciseScreen({ route, navigation }) {
 
   const currentSet = sets[currentSetIndex];
 
-  return (
+    return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={true}>
         {/* Заголовок */}
@@ -138,13 +276,13 @@ export default function ExerciseScreen({ route, navigation }) {
             <View style={styles.progressContainer}>
               <Text style={styles.progressText}>
                 Прогресс: {getCompletedSetsCount()}/{sets.length} подходов
-              </Text>
+          </Text>
               <ProgressBar 
                 progress={getProgress()} 
                 color="#4CAF50" 
                 style={styles.progressBar}
               />
-            </View>
+        </View>
 
             {/* Ссылка на видео */}
             {exercise.videoUrl && (
@@ -170,7 +308,7 @@ export default function ExerciseScreen({ route, navigation }) {
             <View style={styles.setStatus}>
               <Chip 
                 mode={currentSet.completed ? "flat" : "outlined"}
-                style={[
+              style={[
                   styles.completedChip,
                   currentSet.completed && styles.completedChipActive
                 ]}
@@ -188,17 +326,19 @@ export default function ExerciseScreen({ route, navigation }) {
                 style={styles.weightInput}
                 mode="outlined"
                 disabled={currentSet.completed}
+                placeholder="0.0"
+                helperText="Только цифры"
               />
               <TextInput
                 label="Повторы"
                 value={currentSet.reps}
                 onChangeText={handleRepsChange}
-                keyboardType="numeric"
+              keyboardType="numeric"
                 style={styles.repsInput}
                 mode="outlined"
                 disabled={currentSet.completed}
-              />
-            </View>
+            />
+          </View>
 
             {/* Кнопки навигации по подходам */}
             <View style={styles.setNavigation}>
@@ -267,6 +407,17 @@ export default function ExerciseScreen({ route, navigation }) {
           </Button>
           
           <Button 
+            mode="outlined" 
+            onPress={saveExerciseResults}
+            loading={saving}
+            disabled={saving || getCompletedSetsCount() === 0}
+            style={styles.saveButton}
+            icon="content-save"
+          >
+            Сохранить
+          </Button>
+          
+          <Button 
             mode="contained" 
             onPress={goToNextExercise}
             style={styles.nextButton}
@@ -276,6 +427,21 @@ export default function ExerciseScreen({ route, navigation }) {
           </Button>
         </View>
       </ScrollView>
+
+      {/* Уведомления о статусе сохранения */}
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={6000}
+            style={[
+          styles.snackbar,
+          snackbarType === 'error' && styles.snackbarError,
+          snackbarType === 'info' && styles.snackbarInfo,
+          snackbarType === 'success' && styles.snackbarSuccess
+        ]}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </SafeAreaView>
   );
 }
@@ -400,10 +566,26 @@ const styles = StyleSheet.create({
   },
   backButton: {
     flex: 1,
-    marginRight: 8,
+    marginRight: 4,
+  },
+  saveButton: {
+    flex: 1,
+    marginHorizontal: 4,
   },
   nextButton: {
-    flex: 2,
-    marginLeft: 8,
+    flex: 1,
+    marginLeft: 4,
+  },
+  snackbar: {
+    marginBottom: 16,
+  },
+  snackbarSuccess: {
+    backgroundColor: '#4CAF50',
+  },
+  snackbarError: {
+    backgroundColor: '#F44336',
+  },
+  snackbarInfo: {
+    backgroundColor: '#2196F3',
   },
 });

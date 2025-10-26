@@ -17,6 +17,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import GoogleSheetsService from './src/services/GoogleSheetsService';
 import ExerciseScreen from './src/screens/ExerciseScreen';
+import ProgressSetupScreen from './src/screens/ProgressSetupScreen';
 
 const Stack = createStackNavigator();
 
@@ -38,7 +39,12 @@ function HomeScreen({ navigation }) {
     setError(null);
 
     try {
-      await GoogleSheetsService.authenticate();
+      const authResult = await GoogleSheetsService.authenticate();
+      
+      if (!authResult || (typeof authResult === 'object' && !authResult.success)) {
+        const errorMsg = typeof authResult === 'object' ? authResult.message : 'Ошибка аутентификации';
+        throw new Error(errorMsg);
+      }
       
       const data = await GoogleSheetsService.getSheetData(sheetUrl);
       const rawPlan = GoogleSheetsService.parseWorkoutPlan(data);
@@ -97,7 +103,8 @@ function HomeScreen({ navigation }) {
       exercise: workout.exercises[0],
       exerciseIndex: 0,
       totalExercises: workout.exercises.length,
-      workout: workout
+      workout: workout,
+      sheetUrl: sheetUrl
     });
   };
 
@@ -146,14 +153,23 @@ function HomeScreen({ navigation }) {
                 {todayWorkout.exercises.length} упражнений
               </Paragraph>
               
-              <Button 
-                mode="contained" 
-                onPress={() => startWorkout(todayWorkout)}
-                style={styles.startButton}
-                icon="play"
-              >
-                Начать тренировку
-              </Button>
+                  <Button 
+                    mode="contained" 
+                    onPress={() => startWorkout(todayWorkout)}
+                    style={styles.startButton}
+                    icon="play"
+                  >
+                    Начать тренировку
+                  </Button>
+                  
+                  <Button 
+                    mode="outlined" 
+                    onPress={() => navigation.navigate('ProgressSetup', { sheetUrl })}
+                    style={styles.setupButton}
+                    icon="cog"
+                  >
+                    Настроить сохранение прогресса
+                  </Button>
               
               {todayWorkout.exercises.map((exercise, index) => (
                 <Card key={index} style={styles.exerciseCard}>
@@ -233,6 +249,20 @@ export default function App() {
                 },
               }}
             />
+            <Stack.Screen 
+              name="ProgressSetup" 
+              component={ProgressSetupScreen}
+              options={{ 
+                title: 'Настройка прогресса',
+                headerStyle: {
+                  backgroundColor: '#2E8B57',
+                },
+                headerTintColor: '#fff',
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }}
+            />
           </Stack.Navigator>
         </NavigationContainer>
       </PaperProvider>
@@ -279,6 +309,9 @@ const styles = StyleSheet.create({
   },
   startButton: {
     marginTop: 16,
+    marginBottom: 8,
+  },
+  setupButton: {
     marginBottom: 16,
   },
   videoButton: {

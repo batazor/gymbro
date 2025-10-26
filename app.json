@@ -11,7 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#2E8B57"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gymbro.app",
@@ -35,12 +37,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "scheme": "gymbro",
     "plugins": [],
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "28e83197-53d0-482f-ad93-328e03dee966"
       }
     },
-    "jsEngine": "jsc"
+    "jsEngine": "jsc",
+    "owner": "batazor"
   }
 }

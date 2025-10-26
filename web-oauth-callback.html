@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google OAuth Callback</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #F44336;
+        }
+        .loading {
+            color: #2196F3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="status" class="loading">
+            <h2>Обработка авторизации...</h2>
+            <p>Пожалуйста, подождите...</p>
+        </div>
+    </div>
+
+    <script>
+        // Получаем параметры из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const error = urlParams.get('error');
+        const state = urlParams.get('state');
+        
+        const statusDiv = document.getElementById('status');
+        
+        if (code) {
+            // Успешная авторизация
+            statusDiv.innerHTML = '<h2 class="success">✅ Авторизация успешна!</h2><p>Возвращаемся в приложение...</p>';
+            
+            // Сохраняем код в localStorage для обработки в основном приложении
+            localStorage.setItem('google_auth_code', code);
+            localStorage.setItem('google_auth_timestamp', Date.now().toString());
+            
+            // Пытаемся вернуться в приложение
+            setTimeout(() => {
+                // Если есть opener (popup), отправляем сообщение
+                if (window.opener) {
+                    window.opener.postMessage({
+                        type: 'GOOGLE_AUTH_SUCCESS',
+                        code: code
+                    }, window.location.origin);
+                    window.close();
+                } else {
+                    // Если это прямой redirect, перенаправляем обратно
+                    window.location.href = '/';
+                }
+            }, 2000);
+            
+        } else if (error) {
+            // Ошибка авторизации
+            statusDiv.innerHTML = `<h2 class="error">❌ Ошибка авторизации</h2><p>Ошибка: ${error}</p><p>Возвращаемся в приложение...</p>`;
+            
+            localStorage.setItem('google_auth_error', error);
+            localStorage.setItem('google_auth_timestamp', Date.now().toString());
+            
+            setTimeout(() => {
+                if (window.opener) {
+                    window.opener.postMessage({
+                        type: 'GOOGLE_AUTH_ERROR',
+                        error: error
+                    }, window.location.origin);
+                    window.close();
+                } else {
+                    window.location.href = '/';
+                }
+            }, 3000);
+            
+        } else {
+            // Неизвестная ошибка
+            statusDiv.innerHTML = '<h2 class="error">❌ Неизвестная ошибка</h2><p>Возвращаемся в приложение...</p>';
+            
+            setTimeout(() => {
+                if (window.opener) {
+                    window.opener.postMessage({
+                        type: 'GOOGLE_AUTH_ERROR',
+                        error: 'unknown'
+                    }, window.location.origin);
+                    window.close();
+                } else {
+                    window.location.href = '/';
+                }
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

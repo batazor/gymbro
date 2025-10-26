@@ -29,9 +29,10 @@ export default function GoogleSheetsSetupScreen({ navigation }) {
 
     try {
       // Аутентификация
-      const authSuccess = await GoogleSheetsService.authenticate();
-      if (!authSuccess) {
-        throw new Error('Ошибка аутентификации');
+      const authResult = await GoogleSheetsService.authenticate();
+      if (!authResult || (typeof authResult === 'object' && !authResult.success)) {
+        const errorMsg = typeof authResult === 'object' ? authResult.message : 'Ошибка аутентификации';
+        throw new Error(errorMsg);
       }
 
       // Получение данных
