@@ -14,6 +14,8 @@ class GoogleOAuthService {
     this.tokenExpiry = null;
     
     // OAuth2 конфигурация для Google
+    // ⚠️ ВНИМАНИЕ: Замените эти значения на ваши реальные Google OAuth credentials
+    // Получите их здесь: https://console.cloud.google.com/apis/credentials
     this.clientId = 'YOUR_CLIENT_ID_HERE.apps.googleusercontent.com';
     this.clientSecret = 'YOUR_CLIENT_SECRET_HERE';
     // Используем стандартный redirect URI для Expo
