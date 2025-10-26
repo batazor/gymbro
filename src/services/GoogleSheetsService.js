@@ -697,8 +697,10 @@ class GoogleSheetsService {
   // Запись через Google Sheets API
   async writeToSheetAPI(sheetId, rowData) {
     try {
-      // Используем публичный API для записи данных
-      const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Прогресс!A:J:append?valueInputOption=RAW&key=AIzaSyBvOkBwJcJ8J8J8J8J8J8J8J8J8J8J8J8J8`;
+      // Получаем валидный токен для OAuth2
+      const accessToken = await GoogleOAuthService.getValidToken();
+      
+      const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Прогресс!A:J:append?valueInputOption=RAW`;
       
       const requestBody = {
         values: rowData
@@ -708,6 +710,7 @@ class GoogleSheetsService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify(requestBody)
       });
